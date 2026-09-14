@@ -26,6 +26,10 @@ jobs:
   # ---------------------------------------------------------------------------
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      # Exact pushed tag (metadata-action normalises `v0.27.2-x` -> `0.27.2-x`),
+      # consumed by trivy-image so the scan targets the real ref.
+      scanner_ref: ${{ steps.primary.outputs.ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,6 +97,18 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/heads/hardening') || github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
 
+      - name: Select primary image ref
+        id: primary
+        # metadata-action normalises `refs/tags/v0.27.2-x` to `0.27.2-x`, so the
+        # raw git ref is NOT the published tag. Derive the exact ref from the
+        # metadata output instead, preferring the human version tag over the
+        # sha-*/latest aliases.
+        run: |
+          ref=$(printf '%s\n' '${{ steps.meta.outputs.tags }}' | grep -vE ':sha-[0-9a-f]+$|:latest$' | head -n1)
+          [ -n "$ref" ] || ref=$(printf '%s\n' '${{ steps.meta.outputs.tags }}' | head -n1)
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "primary ref: ${ref}"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -113,19 +129,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
       security-events: write
     steps:
-      - name: Resolve pushed tag
-        id: tag
-        run: |
-          # Prefer semver tag when a tag triggered this run, else branch ref.
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            image="${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}"
-          else
-            image="${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME}"
-          fi
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-          echo "scanning ${image}"
+      - name: Log in to GHCR
+        # The package is private by default, so the remote scan needs a token.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
