@@ -42,9 +42,16 @@ jobs:
       - name: Install cmake >= 4.0 (runner ships 3.x; RAGFlow C++ needs 4.0)
         run: python3 -m pip install "cmake>=4.0"
 
-      - name: Download native deps (office_oxide, pdfium, pdf_oxide, onnxruntime)
+      - name: Fetch native static libs (office_oxide, pdfium, pdf_oxide, onnxruntime)
+        # build.sh --go requires these in ~/ragflow-native-libs. On the
+        # self-hosted release runner they're pre-seeded at /opt/ragflow-native-libs;
+        # on ubuntu-latest we must fetch them. download_go_deps.py is the canonical
+        # fetch path (PEP-723 deps installed explicitly, not via uv run — uv is not
+        # guaranteed present and the full download_deps.py pulls HF models/nltk the
+        # Docker build ignores).
         run: |
-          python3 ragflow_deps/download_deps.py || echo "::warning::download_deps.py partial — build.sh will re-attempt"
+          python3 -m pip install --quiet nltk "huggingface-hub>=0.25" requests
+          python3 ragflow_deps/download_go_deps.py
 
       - name: Build server binary (with native libs / ORT)
         run: |
