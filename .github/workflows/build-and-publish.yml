@@ -143,7 +143,7 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ steps.tag.outputs.image }}
+          image-ref: ${{ needs.build-and-push.outputs.scanner_ref }}
           format: sarif
           output: trivy-image.sarif
           severity: CRITICAL,HIGH
