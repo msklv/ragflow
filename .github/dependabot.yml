@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Python (pyproject.toml + uv.lock)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+
+  # Web frontend (npm)
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5

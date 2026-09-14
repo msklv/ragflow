@@ -1,0 +1,116 @@
+name: build-and-publish
+
+on:
+  push:
+    branches: [hardening, main]
+    tags: ["v*"]
+  pull_request:
+    branches: [hardening, main]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ragflow
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the Go server + CLI with native libs, assemble the RAGFlow image and
+  # publish it to GHCR. Replicates upstream release.yml build path.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download native deps (office_oxide, pdfium, pdf_oxide, onnxruntime)
+        run: |
+          python3 ragflow_deps/download_deps.py || echo "::warning::download_deps.py partial — build.sh will re-attempt"
+
+      - name: Build server binary (with native libs / ORT)
+        run: |
+          ./build.sh --cpp
+          ./build.sh --go
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        name: Image metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern=v{{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/heads/hardening') || github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Container CVE scan on the pushed image. Uploads SARIF to Code Scanning.
+  # ---------------------------------------------------------------------------
+  trivy-image:
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Resolve pushed tag
+        id: tag
+        run: |
+          # Prefer semver tag when a tag triggered this run, else branch ref.
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "image=${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}"
+          else
+            echo "image=${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.tag.outputs.image }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif

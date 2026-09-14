@@ -1,0 +1,72 @@
+name: security-scan
+
+on:
+  push:
+    branches: [hardening, main]
+  pull_request:
+    branches: [hardening, main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  # osv-scanner — dependency audit across all manifests (uv.lock, go.sum,
+  # package-lock.json). Invoked as a JOB via the reusable workflow (NOT a step).
+  osv-scan:
+    name: osv-scanner (OSV.dev)
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.5.1
+    with:
+      scan-args: |-
+        --include-git-root
+        -r
+        ./
+
+  # pip-audit — Python advisory audit. uv.lock -> pinned requirements.txt,
+  # then audit that. Fails (exit 1) when findings exist.
+  pip-audit:
+    name: pip-audit (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Export lockfile and audit
+        run: |
+          python -m pip install --quiet pip-audit uv
+          uv export --frozen --format requirements.txt --no-hashes -o /tmp/reqs.txt
+          pip-audit -r /tmp/reqs.txt
+
+  # Trivy filesystem scan — CVE scan over the working tree, SARIF to Code Scanning.
+  trivy-fs:
+    name: Trivy (filesystem)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
