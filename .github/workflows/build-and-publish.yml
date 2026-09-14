@@ -39,6 +39,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install cmake >= 4.0 (runner ships 3.x; RAGFlow C++ needs 4.0)
+        run: python3 -m pip install "cmake>=4.0"
+
       - name: Download native deps (office_oxide, pdfium, pdf_oxide, onnxruntime)
         run: |
           python3 ragflow_deps/download_deps.py || echo "::warning::download_deps.py partial — build.sh will re-attempt"
