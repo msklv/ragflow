@@ -152,49 +152,11 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
                 res.append(d)
             return res
         except Exception as e:
-            logging.warning(f"python-pptx parsing failed for {filename}: {e}, trying tika as fallback")
+            error_msg = f"Unsupported .ppt/.pptx parsing: python-pptx failed ({e}) and the tika fallback was removed from this image."
             if callback:
-                callback(0.1, "python-pptx failed, trying tika as fallback")
-
-            try:
-                from tika import parser as tika_parser
-            except Exception as tika_error:
-                error_msg = f"tika not available: {tika_error}. Unsupported .ppt/.pptx parsing."
-                if callback:
-                    callback(0.8, error_msg)
-                logging.warning(f"{error_msg} for {filename}.")
-                raise NotImplementedError(error_msg)
-
-            if binary is not None:
-                binary_data = binary
-            else:
-                with open(filename, "rb") as f:
-                    binary_data = f.read()
-            doc_parsed = tika_parser.from_buffer(BytesIO(binary_data))
-
-            if doc_parsed.get("content", None) is not None:
-                sections = doc_parsed["content"].split("\n")
-                sections = [s for s in sections if s.strip()]
-
-                for pn, txt in enumerate(sections):
-                    d = copy.deepcopy(doc)
-                    pn += from_page
-                    d["doc_type_kwd"] = "text"
-                    d["page_num_int"] = [pn + 1]
-                    d["top_int"] = [0]
-                    d["position_int"] = [(pn + 1, 0, 0, 0, 0)]
-                    tokenize(d, txt, eng, language=lang)
-                    res.append(d)
-
-                if callback:
-                    callback(0.8, "Finish parsing with tika.")
-                return res
-            else:
-                error_msg = f"tika.parser got empty content from {filename}."
-                if callback:
-                    callback(0.8, error_msg)
-                logging.warning(error_msg)
-                raise NotImplementedError(error_msg)
+                callback(0.8, error_msg)
+            logging.warning(f"{error_msg} for {filename}.")
+            raise NotImplementedError(error_msg)
     elif re.search(r"\.pdf$", filename, re.IGNORECASE):
         layout_recognize_raw = parser_config.get("layout_recognize", "DeepDOC")
         tenant_id = kwargs.get("tenant_id")

@@ -67,6 +67,7 @@ from rag.flow.parser.utils import (
 )
 from rag.llm.cv_model import Base as VLM
 from rag.utils.base64_image import image2id
+from rag.utils.tika_stub import report_unsupported_doc
 
 
 class ParserParam(ProcessParamBase):
@@ -905,17 +906,8 @@ class Parser(ProcessBase):
         self.callback(random.randint(1, 5) / 100.0, "Start to work on a DOC document")
         conf = self._param.setups["doc"]
         self.set_output("output_format", conf["output_format"])
-
-        from tika import parser as tika_parser
-
-        parsed = tika_parser.from_buffer(io.BytesIO(blob))
-        sections = [line for line in parsed["content"].split("\n") if line]
-
-        if conf.get("output_format") == "json":
-            self.set_output("json", [{"text": section, "doc_type_kwd": "text"} for section in sections])
-            return
-
-        self.set_output("markdown", "\n".join(sections))
+        self.set_output("file", {**kwargs.get("file", {}), "outlines": []})
+        report_unsupported_doc(self.callback, name)
 
     def _docx(self, name, blob, **kwargs):
         """Parse DOCX files and optionally remove table-of-contents content."""
@@ -926,36 +918,7 @@ class Parser(ProcessBase):
 
         if re.search(r"\.doc$", name, re.IGNORECASE):
             self.set_output("file", {**kwargs.get("file", {}), "outlines": []})
-            try:
-                from tika import parser as tika_parser
-            except Exception as e:
-                msg = f"tika not available: {e}. Unsupported .doc parsing."
-                self.callback(0.8, msg)
-                logging.warning(f"{msg} for {name}.")
-                return
-
-            doc_parsed = tika_parser.from_buffer(io.BytesIO(blob))
-            content = doc_parsed.get("content")
-            if content is None:
-                msg = f"tika.parser got empty content from {name}."
-                self.callback(0.8, msg)
-                logging.warning(msg)
-                return
-
-            sections = [line.strip() for line in content.splitlines() if line and line.strip()]
-            if conf.get("remove_toc"):
-                sections = remove_toc_word(sections, [])
-
-            if conf.get("output_format") == "json":
-                self.set_output(
-                    "json",
-                    [{"text": line, "image": None, "doc_type_kwd": "text"} for line in sections],
-                )
-            elif conf.get("output_format") == "markdown":
-                # Tika gives us plain text lines, so join with blank lines to preserve paragraph boundaries in markdown.
-                self.set_output("markdown", "\n\n".join(sections))
-
-            self.callback(0.8, "Finish parsing.")
+            report_unsupported_doc(self.callback, name)
             return
 
         docx_parser = Docx()

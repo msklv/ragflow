@@ -16,11 +16,11 @@
 
 import logging
 import re
-from io import BytesIO
 
 from deepdoc.parser.utils import get_text
 from rag.app import naive
 from rag.app.naive import by_plaintext, PARSERS
+from rag.utils.tika_stub import report_unsupported_doc
 from api.db.joint_services.tenant_model_service import get_composite_model_name_by_id
 from common.constants import MAXIMUM_PAGE_NUMBER
 from common.parser_config_utils import normalize_layout_recognizer
@@ -150,20 +150,8 @@ def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER, lang=
 
     elif re.search(r"\.doc$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
-        try:
-            from tika import parser as tika_parser
-        except Exception as e:
-            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing.")
-            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}.")
-            return []
-
-        binary = BytesIO(binary)
-        doc_parsed = tika_parser.from_buffer(binary)
-        if doc_parsed.get("content", None) is not None:
-            sections = doc_parsed["content"].split("\n")
-            sections = [(line, "") for line in sections if line]
-            remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
-            callback(0.8, "Finish parsing.")
+        report_unsupported_doc(callback, filename)
+        return []
 
     else:
         raise NotImplementedError("file type not supported yet(doc, docx, pdf, txt supported)")
