@@ -61,6 +61,13 @@ jobs:
           python3 ragflow_deps/download_go_deps.py
 
       - name: Build server binary (with native libs / ORT)
+        # build.sh defaults GOPROXY to goproxy.cn first, which intermittently
+        # returns stream errors on large modules from public runners. Pre-set
+        # the official proxy (build.sh respects an already-set GOPROXY via
+        # ${GOPROXY:-...}); retries typically clear transient stream errors.
+        env:
+          GOPROXY: "https://proxy.golang.org,direct"
+          CGO_ENABLED: "1"
         run: |
           ./build.sh --cpp
           ./build.sh --go
