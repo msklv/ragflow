@@ -42,13 +42,15 @@ jobs:
       - name: Export lockfile and audit
         run: |
           python -m pip install --quiet pip-audit uv
-          # uv.lock targets Python >=3.13. Export a flat pinned requirements,
-          # dropping VCS/git entries (e.g. gitee infiniflow/graspologic) that
-          # pip-audit's dry-run install cannot fetch from this runner but that
-          # osv-scanner already audits via the raw lockfile.
+          # uv.lock is a multi-platform lock: a flat export carries the pinned
+          # sets of every resolution branch (darwin / linux-aarch64 / linux-x64)
+          # merged together, which pip cannot resolve at once (ResolutionImpossible).
+          # Audit the pins directly instead — no dependency resolution — and skip
+          # VCS/URL requirements (gitee graspologic, the spacy model wheels) that
+          # carry no version to match against an advisory.
           uv export --frozen --format requirements.txt --no-hashes -o /tmp/reqs.txt
-          grep -vE '^[^[:space:]]+[[:space:]]+@[[:space:]]+git\+' /tmp/reqs.txt > /tmp/reqs-audit.txt
-          pip-audit -r /tmp/reqs-audit.txt
+          grep -vE '^[^[:space:]]+[[:space:]]+@[[:space:]]+[a-z+]+://' /tmp/reqs.txt > /tmp/reqs-audit.txt
+          pip-audit -r /tmp/reqs-audit.txt --no-deps --disable-pip
 
   # Trivy filesystem scan — CVE scan over the working tree, SARIF to Code Scanning.
   trivy-fs:
