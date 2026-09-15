@@ -5,11 +5,6 @@ SHELL ["/bin/bash", "-c"]
 
 ARG NEED_MIRROR=0
 
-#Optional parameter
-#If set NEED_MIRROR=1, and set GITEE_TOKEN="xxxxx" , donwload source from gitee.
-#If don't set GITEE_TOKEN , download from github
-ARG GITEE_TOKEN=""
-
 WORKDIR /ragflow
 
 # copy models downloaded via download_deps.py
@@ -50,15 +45,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
 
 # Download resource from GitHub to /usr/share/infinity
 RUN mkdir -p /usr/share/infinity/resource && \
-    if [ "$NEED_MIRROR" == "1" ]; then \
-        if [ -n "$GITEE_TOKEN" ]; then \
-            git clone --depth 1 --single-branch "https://oauth2:${GITEE_TOKEN}@gitee.com/infiniflow/resource" /tmp/resource; \
-        else \
-            git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
-        fi; \
-    else \
-        git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
-    fi && \
+    git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource && \
     cp -r /tmp/resource/* /usr/share/infinity/resource && \
     rm -rf /tmp/resource
 
@@ -210,7 +197,23 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     # the locked version avoids serving a half-broken cached copy.
     uv sync --python 3.13 --frozen --refresh-package litellm && \
     # Ensure pip is available in the venv for runtime package installation (fixes #12651)
-    .venv/bin/python3 -m ensurepip --upgrade
+    .venv/bin/python3 -m ensurepip --upgrade && \
+    # Drop non-runtime fixtures that image scanners report as secrets:
+    # vendored test keys (pycryptodome/pycryptodomex SelfTest), example
+    # credentials and doctest samples (mistralai, boto3, botocore), legacy
+    # test certificates (future) and the packaged selenium-wire CA key.
+    # Must happen in THIS layer: secret rules scan raw layer tarballs, so a
+    # later `rm` in the runtime stage only adds a whiteout and the findings
+    # come back. Keep it the last mutation of the venv, so a re-installed
+    # package cannot restore these files.
+    site=.venv/lib/python3.13/site-packages; \
+    rm -rf "$site"/Crypto/SelfTest \
+           "$site"/Cryptodome/SelfTest \
+           "$site"/mistralai/extra/tests \
+           "$site"/future/backports/test \
+           "$site"/boto3/examples \
+           "$site"/seleniumwire/ca.key && \
+    find "$site"/botocore/data -name 'examples-1.json' -delete
 
 # Install frontend dependencies — depends only on package manifests so
 # web source / docs changes don't invalidate this layer.

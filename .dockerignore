@@ -21,6 +21,13 @@ logs/
 *.log
 docker/ragflow-logs/
 
+# ── Agent sandbox: ship the runtime package, but not its build-time lock ────
+# agent/sandbox/uv.lock is scanned by image scanners as a package manifest
+# (KCS reports starlette 0.50.0 from it) even though the sandbox venv is never
+# built inside this image. The sandbox base images are built from the repo
+# checkout, so the lock is not needed in the runtime image.
+agent/sandbox/uv.lock
+
 # ── Docker runtime data ─────────────────────────────────────────────────────
 docker/data/
 docker/oceanbase/

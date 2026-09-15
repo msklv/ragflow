@@ -305,7 +305,7 @@ export const ChatChannelFormFields: Record<ChatChannelKey, FormFieldConfig[]> =
         name: 'config.credential.service_account',
         type: FormFieldType.Textarea,
         required: false,
-        placeholder: '{ "type": "service_account", ... }',
+        placeholder: 'Paste the service account JSON contents',
         shouldRender: (values: any) =>
           values?.config?.auth_mode === 'service_account',
         customValidate: (val: string, values: any) =>

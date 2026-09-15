@@ -15,7 +15,7 @@ RUN if [ "$NEED_MIRROR" = 1 ]; then \
 
 WORKDIR /app
 
-COPY package.json package-lock.json .
+COPY package.json package-lock.json ./
 
 RUN npm install
 

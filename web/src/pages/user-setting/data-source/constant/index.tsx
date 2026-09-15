@@ -1646,7 +1646,7 @@ const generateDataSourceFormFields = (t: TFunction) => ({
       name: 'config.credentials.service_account_json',
       type: FormFieldType.Password,
       required: true,
-      placeholder: '{ "type": "service_account", "project_id": "...", ... }',
+      placeholder: 'Paste the Google service account JSON contents',
       tooltip: t('setting.bigqueryServiceAccountJsonTip'),
     },
     {
